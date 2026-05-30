@@ -372,8 +372,10 @@ async def register_do(page, email_addr, link=None):
     log(f"Registering: {name} ({email_addr})", "🚀")
 
     try:
-        # Navigate to signup
-        await page.goto(REGISTER_URL, wait_until='domcontentloaded', timeout=45000)
+        # Navigate to signup (use DO waves link if available)
+        target_url = link if link else REGISTER_URL
+        log(f"Using: {target_url[:80]}...", "🌐")
+        await page.goto(target_url, wait_until='domcontentloaded', timeout=45000)
         await page.wait_for_timeout(3000)
 
         # Fill form directly (name, email, password)
@@ -537,8 +539,8 @@ async def register_do(page, email_addr, link=None):
 
 
 # ============ PIPELINE ============
-async def process_one(email_addr, results, page, link=None):
-    """Full pipeline: register DO account."""
+async def process_one(email_addr, results, page, link=None, timeout=180):
+    """Full pipeline: fetch email links → register DO → verify."""
     if email_addr in results and results[email_addr].get('status') == 'success':
         log(f"Already done, skipping", "⏭️")
         return True
@@ -547,20 +549,36 @@ async def process_one(email_addr, results, page, link=None):
     print(f"  {email_addr}")
     print(f"{'='*50}")
 
-    # Register DO account
+    # Step 0: Fetch "Confirm your AMD Developer Cloud account" link
+    confirm_link = confirm_email(email_addr, timeout=timeout)
+    if confirm_link:
+        log("Visiting confirm link...", "🔗")
+        confirmed = await visit_confirm(page, confirm_link)
+        if confirmed:
+            log("AMD account confirmed!", "✅")
+        else:
+            log("Confirm visit failed, continuing...", "⚠️")
+        await asyncio.sleep(5)
+    else:
+        log("No confirm email found, maybe already confirmed", "⚠️")
+
+    # Step 1: Fetch "Welcome to the AMD developer cloud" → DO waves link
+    if not link:
+        link = fetch_do_link(email_addr, timeout=timeout)
+    if link:
+        log(f"DO link ready: {link[:60]}...", "🔗")
+    else:
+        log("No DO link found, will try direct registration", "⚠️")
+
+    # Step 2: Register DO account (with link if available)
     ok = await register_do(page, email_addr, link)
 
     if ok:
-        # Step 2: Login and verify with code
-        await asyncio.sleep(10)  # Wait for verification email
-        verified = await login_and_verify(page, email_addr)
-
         results[email_addr] = {
             'status': 'success',
             'password': PASSWORD,
             'name': email_to_name(email_addr),
             'time': datetime.now().isoformat(),
-            'verified': verified,
         }
         save_results(results)
 
@@ -637,7 +655,7 @@ async def main():
         link = email_links.get(email_addr)
 
         page = await browser.new_page()
-        ok = await process_one(email_addr, results, page, link=link)
+        ok = await process_one(email_addr, results, page, link=link, timeout=args.timeout)
         await page.close()
 
         if ok:

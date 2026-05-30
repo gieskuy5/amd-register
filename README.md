@@ -27,11 +27,13 @@ python3 amdregister.py --email user@domain.com --name "Erik Hansen" --company "M
 ```
 
 ### `do_activate.py`
-DigitalOcean account registration + verification:
-1. Register at devcloud.amd.com
-2. Solve FunCaptcha via 2Captcha
-3. Inject token via Arkose API
-4. Login + enter 6-digit verification code
+DigitalOcean account registration:
+1. Fetch "Confirm your AMD Developer Cloud account" email → visit link
+2. Fetch "Welcome to the AMD developer cloud" email → get DO waves link
+3. Register at devcloud.amd.com (using waves link if available)
+4. Solve FunCaptcha via 2Captcha
+5. Inject token via Arkose API
+6. If already registered → auto skip
 
 ```bash
 python3 do_activate.py --input do_pending.json
